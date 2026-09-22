@@ -444,16 +444,16 @@ function update(dt){
       else hz.z-=sp*dt*hz.rate;                                                            // otherwise normal
     }
   }
-  // collisions + near-miss
+  // collisions + near-miss (braking = stopped → no crash)
   for(const hz of hazards){
     if(hz.hit) continue;
     if(hz.kind==='cross'){
-      if(hz.z<=Z_HIT+0.4 && hz.z>Z_PLAYER-0.25){
+      if(braking<=0 && hz.z<=Z_HIT+0.4 && hz.z>Z_PLAYER-0.25){
         const p=proj(hz.z), px=roadCx()+(hz.u*2-1)*p.half*0.92;
         if(Math.abs(px-player.x) < (2*p.half/3)*0.5+8){ hz.hit=true; crash(); }
       }
     }else{
-      if(hz.lane===player.lane && hz.z<=Z_HIT && hz.z>Z_PLAYER-0.2){ hz.hit=true; crash(); }
+      if(braking<=0 && hz.lane===player.lane && hz.z<=Z_HIT && hz.z>Z_PLAYER-0.2){ hz.hit=true; crash(); }
       if(!hz.passed && hz.pz>Z_PLAYER && hz.z<=Z_PLAYER){
         hz.passed=true;
         if(Math.abs(hz.lane-player.lane)===1){ const p=proj(Z_PLAYER); addBonus(30,`${t().dodge} +30`,laneX(hz.lane,p.half),p.sy-40); }
