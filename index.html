@@ -253,23 +253,23 @@ function buildStars(){
 
 /* ---------- state ---------- */
 let state='start';
-let dist=0, speed=0, baseSpeed=2.5, maxSpeed=5.2;   // z-units per second (gentler)
+let dist=0, speed=0, baseSpeed=2.9, maxSpeed=6.2;   // z-units per second (medium)
 let dashPhase=0;
 let player={lane:1, x:0, tx:0};
 let hazards=[], warns=[], rsus=[], pops=[], feed=[], overlayLabels=[];
 let spawnTimer=0, spawnGap=1.35, rsuTimer=1.4;
 let braking=0, holdBrake=false, shake=0, crashFlash=0, lastTs=0;
 let countdown=0, stage=1, lastStage=1, speedUp=0;
-let dead=false;
+let dead=false, stun=0, invuln=0;
 
 const HKINDS=['stopped','brake','cross','wrong'];
-const HWEIGHT={stopped:0.36,brake:0.32,cross:0.22,wrong:0.10};
+const HWEIGHT={stopped:0.33,brake:0.30,cross:0.21,wrong:0.16};
 function pickKind(){ let r=Math.random(),a=0; for(const k of HKINDS){a+=HWEIGHT[k]; if(r<=a)return k;} return 'stopped'; }
 
 function resetGame(){
   dist=0; speed=baseSpeed; hazards=[]; warns=[]; rsus=[]; pops=[]; feed=[];
   spawnTimer=0.7; spawnGap=1.35; rsuTimer=1.2; braking=0; shake=0; crashFlash=0;
-  dashPhase=0; countdown=3; stage=1; lastStage=1; speedUp=0; timeLeft=TIME_LIMIT;
+  dashPhase=0; countdown=3; stage=1; lastStage=1; speedUp=0; timeLeft=TIME_LIMIT; stun=0; invuln=0;
   player.lane=1; player.x=laneX(1,nearHalf); player.tx=player.x;
 }
 
@@ -301,7 +301,7 @@ const T={
     retry:'다시 하기',
     tierPrize:{b:'🎉',t:'접이식 텀블러 당첨!',m:`${CUT_PRIZE}점 돌파! 이 화면을 스탭에게 보여주세요.`},
     tierSnack:{b:'🍬',t:'간식 당첨!',m:'참여 감사합니다! 이 화면을 스탭에게 보여주세요.'},
-    cdSub:'RSU 경고를 보고 미리 피하세요', dodge:'회피',
+    cdSub:'RSU 경고를 보고 미리 피하세요', dodge:'회피', penalty:'-3초',
     lane:n=>`${n}차로`, haz:{stopped:'정지차량',brake:'앞차 급정거',cross:'보행자 횡단',wrong:'역주행 차량'},
     ped:'보행자', pedFeed:'보행자 횡단 감지'
   },
@@ -330,7 +330,7 @@ const T={
     retry:'Retry',
     tierPrize:{b:'🎉',t:'Foldable tumbler!',m:`Over ${CUT_PRIZE} points! Show this screen to the staff.`},
     tierSnack:{b:'🍬',t:'Snack prize!',m:'Thanks for playing! Show this screen to the staff.'},
-    cdSub:'Watch the RSU warning and dodge early', dodge:'DODGE',
+    cdSub:'Watch the RSU warning and dodge early', dodge:'DODGE', penalty:'-3s',
     lane:n=>`Lane ${n}`, haz:{stopped:'Stopped car',brake:'Braking ahead',cross:'Pedestrian',wrong:'Wrong-way car'},
     ped:'Pedestrian', pedFeed:'Pedestrian crossing'
   }
@@ -385,13 +385,13 @@ function pushFeed(text){ feed.push({text,t:0,life:2.4}); }
 function scheduleSpawn(){
   const kind=pickKind();
   if(kind==='cross'){
-    const fromLeft=Math.random()<0.5, lead=2.0;
+    const fromLeft=Math.random()<0.5, lead=1.7;
     warns.push({lane:-1,t:0,life:lead,kind:'cross'}); pushFeed(t().pedFeed);
-    hazards.push({kind:'cross', z:Z_FAR, u:fromLeft?0:1, du:(fromLeft?1:-1)*0.5, walking:false, rate:0.85, hit:false, passed:false, pz:Z_FAR});
+    hazards.push({kind:'cross', z:Z_FAR, u:fromLeft?0:1, du:(fromLeft?1:-1)*0.5, walking:false, rate:0.88, hit:false, passed:false, pz:Z_FAR});
   }else{
-    const lane=(Math.random()*LANES)|0, lead=(kind==='wrong'?2.2:1.9);
+    const lane=(Math.random()*LANES)|0, lead=(kind==='wrong'?1.9:1.6);
     warns.push({lane,t:0,life:lead,kind}); pushFeed(`${t().lane(lane+1)} ${t().haz[kind]}`);
-    const rate = kind==='brake'?0.6 : (kind==='wrong'?1.3:1);
+    const rate = kind==='brake'?0.6 : (kind==='wrong'?1.4:1);
     setTimeout(()=>{ if(state==='play') hazards.push({kind,lane,z:Z_FAR,rate,hit:false,passed:false,pz:Z_FAR}); }, lead*1000);
   }
 }
@@ -403,8 +403,9 @@ function update(dt){
   timeLeft-=dt;
   if(timeLeft<=0){ timeLeft=0; if(state==='play'){ gameOver(); } return; }
   if(holdBrake) braking=Math.max(braking,0.5);
-  speed=Math.min(maxSpeed, baseSpeed+dist*0.0009);
-  const sp=speed*(braking>0?0.06:1);   // brake = near-full stop
+  speed=Math.min(maxSpeed, baseSpeed+dist*0.0012);
+  if(stun>0) stun-=dt; if(invuln>0) invuln-=dt;
+  const sp=speed*((braking>0||stun>0)?0.06:1);   // brake / crash-stun = near stop
   if(braking>0) braking-=dt;
 
   dist += sp*dt*9;
@@ -416,7 +417,7 @@ function update(dt){
   player.x += (player.tx-player.x)*Math.min(1,dt*14);
 
   spawnTimer-=dt;
-  if(spawnTimer<=0){ scheduleSpawn(); spawnGap=Math.max(1.0,1.75-dist*0.00006); spawnTimer=spawnGap*(0.85+Math.random()*0.45); }
+  if(spawnTimer<=0){ scheduleSpawn(); spawnGap=Math.max(0.78,1.5-dist*0.00009); spawnTimer=spawnGap*(0.82+Math.random()*0.42); }
   rsuTimer-=dt;
   if(rsuTimer<=0){ spawnRSU(); rsuTimer=3.2+Math.random()*2.2; }
 
@@ -449,10 +450,10 @@ function update(dt){
     if(hz.kind==='cross'){
       if(hz.z<=Z_HIT+0.4 && hz.z>Z_PLAYER-0.25){
         const p=proj(hz.z), px=roadCx()+(hz.u*2-1)*p.half*0.92;
-        if(Math.abs(px-player.x) < (2*p.half/3)*0.5+8) crash();
+        if(Math.abs(px-player.x) < (2*p.half/3)*0.5+8){ hz.hit=true; crash(); }
       }
     }else{
-      if(hz.lane===player.lane && hz.z<=Z_HIT && hz.z>Z_PLAYER-0.2) crash();
+      if(hz.lane===player.lane && hz.z<=Z_HIT && hz.z>Z_PLAYER-0.2){ hz.hit=true; crash(); }
       if(!hz.passed && hz.pz>Z_PLAYER && hz.z<=Z_PLAYER){
         hz.passed=true;
         if(Math.abs(hz.lane-player.lane)===1){ const p=proj(Z_PLAYER); addBonus(30,`${t().dodge} +30`,laneX(hz.lane,p.half),p.sy-40); }
@@ -465,7 +466,11 @@ function update(dt){
   if(crashFlash>0) crashFlash-=dt*2.4;
 }
 function addBonus(pts,text,x,y){ dist+=pts; pops.push({x,y,t:0,life:0.9,text,color:'#15B0EA'}); }
-function crash(){ if(dead)return; dead=true; shake=16; crashFlash=1; setTimeout(gameOver,420); }
+function crash(){
+  if(dead) return;
+  dead=true; shake=16; crashFlash=1;
+  setTimeout(gameOver,450);
+}
 
 /* ---------- draw ---------- */
 function draw(){
@@ -479,7 +484,7 @@ function draw(){
   items.sort((a,b)=>b.z-a.z);
   drawWarnZones();
   for(const it of items){ if(it.type==='rsu') drawRSU(it.o); else drawHazard(it.o); }
-  if(!dead||crashFlash>0.3) drawPlayer();
+  drawPlayer();
   drawPops();
   ctx.restore();
   renderOverlayLabels();
@@ -756,6 +761,7 @@ function startGame(){
   document.getElementById('controls').classList.remove('hidden');
 }
 function gameOver(){
+  if(state==='over') return;
   state='over'; holdBrake=false;
   document.getElementById('controls').classList.add('hidden');
   const score=Math.floor(dist);
