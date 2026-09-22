@@ -1,0 +1,837 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+<title>V2X DRIVE</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Press+Start+2P&family=Rajdhani:wght@500;600;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/galmuri/dist/galmuri.css">
+<style>
+  :root{
+    --bg:#070B14; --road:#12161F; --lane-mark:#3A4658;
+    --signal:#15B0EA; --signal-dim:rgba(21,176,234,.16);
+    --cohda:#1F7BE0; --caution:#F5A623; --danger:#FF3355;
+    --text:#EAF0F7; --text-dim:#8A97A8;
+    --pixel:'Galmuri11','Press Start 2P',monospace;
+    --hud:'Galmuri11','Rajdhani',"Helvetica Neue",Arial,sans-serif;
+    --body:'Galmuri11',system-ui,-apple-system,"Helvetica Neue",Arial,sans-serif;
+  }
+  *{box-sizing:border-box;-webkit-tap-highlight-color:transparent;}
+  html,body{margin:0;height:100%;background:#04060C;color:var(--text);
+    font-family:var(--body);overflow:hidden;overscroll-behavior:none;}
+  #app{position:fixed;inset:0;display:flex;justify-content:center;background:#04060C;}
+  #stage{position:relative;width:100%;max-width:520px;height:100%;
+    background:var(--bg);overflow:hidden;box-shadow:0 0 80px rgba(0,0,0,.6);}
+  canvas{display:block;width:100%;height:100%;touch-action:none;}
+
+  .screen{position:absolute;inset:0;display:flex;flex-direction:column;
+    justify-content:center;align-items:center;padding:26px 24px;text-align:center;
+    background:
+      radial-gradient(1.5px 1.5px at 12% 18%,#cfe6ff,transparent),
+      radial-gradient(1.5px 1.5px at 82% 12%,#ffe9b0,transparent),
+      radial-gradient(1.5px 1.5px at 68% 26%,#bcd,transparent),
+      radial-gradient(2px 2px at 28% 62%,#9fb8e8,transparent),
+      radial-gradient(1.5px 1.5px at 90% 55%,#cfe6ff,transparent),
+      radial-gradient(1.5px 1.5px at 44% 84%,#ffd0d8,transparent),
+      radial-gradient(1.5px 1.5px at 8% 76%,#cfe6ff,transparent),
+      radial-gradient(2px 2px at 60% 92%,#bcd,transparent),
+      radial-gradient(120% 90% at 50% 12%,rgba(21,176,234,.10),transparent 60%),
+      linear-gradient(180deg,#0a0e1c,#070a14);
+    z-index:10;overflow-y:auto;}
+  .screen.hidden{display:none;}
+
+  .brand{font-family:var(--pixel);font-weight:400;letter-spacing:.1em;
+    font-size:9px;color:var(--signal);margin-bottom:12px;line-height:1.5;}
+  h1{font-family:var(--pixel);font-weight:400;font-size:clamp(24px,8vw,40px);
+    line-height:1.2;margin:0;letter-spacing:.02em;text-shadow:3px 3px 0 #0a2740;}
+  h1 .drive{display:block;color:var(--signal);margin-top:8px;}
+  .tag{color:var(--text-dim);font-size:14px;line-height:1.6;max-width:30ch;margin:18px auto 0;}
+  .tag b{color:var(--text);font-weight:600;}
+
+  .how{width:100%;max-width:350px;margin:20px auto 0;display:flex;flex-direction:column;gap:12px;text-align:left;}
+  .hrow{display:flex;align-items:center;gap:13px;}
+  .hi{flex:none;width:44px;height:44px;border-radius:4px;display:grid;place-items:center;
+    font-family:var(--hud);font-weight:700;font-size:13px;}
+  .hi.warn{background:rgba(255,51,85,.14);color:#FF5A5A;border:2px solid rgba(255,51,85,.4);}
+  .hi.sig{background:var(--signal-dim);color:var(--signal);border:2px solid rgba(21,176,234,.4);}
+  .hi.obu{background:rgba(31,123,224,.18);color:#5AA6F5;border:2px solid rgba(31,123,224,.5);}
+  .hrow p{margin:0;font-size:13.5px;line-height:1.5;color:var(--text-dim);}
+  .hrow p b{color:var(--text);font-weight:600;}
+
+  .closer{max-width:32ch;margin:20px auto 0;font-family:var(--hud);font-weight:600;
+    font-size:14px;color:var(--signal);line-height:1.5;}
+
+  .langsw{position:absolute;top:calc(14px + env(safe-area-inset-top));right:14px;
+    display:flex;gap:2px;background:rgba(255,255,255,.05);border-radius:4px;padding:3px;z-index:12;}
+  .langsw button{border:none;background:transparent;color:var(--text-dim);font-family:var(--pixel);
+    font-size:9px;letter-spacing:.02em;padding:8px 9px;border-radius:3px;cursor:pointer;transition:.12s;}
+  .langsw button.on{background:var(--signal);color:#04120F;}
+
+  .btn{font-family:var(--pixel);font-weight:400;font-size:15px;letter-spacing:.02em;border:none;
+    border-radius:4px;padding:16px 34px;margin-top:24px;cursor:pointer;color:#04120F;background:var(--signal);
+    box-shadow:0 5px 0 #0a5c85, 0 8px 0 2px rgba(0,0,0,.35);transition:transform .05s,box-shadow .05s;}
+  .btn:active{transform:translateY(4px);box-shadow:0 1px 0 #0a5c85,0 3px 0 2px rgba(0,0,0,.35);}
+  .btn.ghost{background:#1a2233;color:var(--text-dim);box-shadow:0 5px 0 #0c111c,0 8px 0 2px rgba(0,0,0,.3);
+    font-size:12px;padding:13px 22px;}
+
+  .go-score{font-family:var(--pixel);font-weight:400;margin:6px 0 2px;}
+  .go-score .n{font-size:clamp(40px,13vw,60px);color:var(--signal);line-height:1;text-shadow:3px 3px 0 #0a2740;}
+  .go-score .u{font-size:10px;color:var(--text-dim);letter-spacing:.1em;display:block;margin-top:8px;}
+  .best{font-size:13px;color:var(--text-dim);margin:4px 0 0;}
+
+  form{width:100%;max-width:320px;margin:20px auto 0;text-align:left;}
+  .f{margin-bottom:11px;}
+  .f input{width:100%;padding:13px 14px;border-radius:4px;border:2px solid rgba(255,255,255,.14);
+    background:rgba(255,255,255,.05);color:var(--text);font-size:15px;font-family:var(--body);}
+  .f input::placeholder{color:#5C6879;}
+  .f input:focus{outline:none;border-color:var(--signal);}
+  .phone-row{display:flex;gap:8px;}
+  .phone-row .cc{flex:none;width:74px;text-align:center;}
+  .phone-row input[type=tel]{flex:1;}
+  .consent{display:flex;gap:10px;align-items:flex-start;margin:4px 2px 2px;font-size:12.5px;color:var(--text-dim);line-height:1.45;}
+  .consent input{margin-top:2px;flex:none;width:18px;height:18px;accent-color:var(--signal);}
+  .err{color:var(--danger);font-size:12.5px;min-height:16px;margin:2px 2px 0;}
+
+  .lead-title{font-family:var(--pixel);font-weight:400;font-size:16px;margin:4px 0 8px;letter-spacing:.02em;line-height:1.4;}
+  .lead-sub{color:var(--text-dim);font-size:14px;margin:0 0 6px;}
+  .detail-toggle{background:none;border:none;color:var(--signal);font-family:var(--hud);
+    font-weight:600;font-size:12.5px;cursor:pointer;padding:6px 2px;text-align:left;width:100%;}
+  .consent-detail{background:rgba(255,255,255,.03);border:1px solid rgba(255,255,255,.08);
+    border-radius:10px;padding:12px 13px;font-size:11.5px;line-height:1.55;color:var(--text-dim);text-align:left;margin-bottom:6px;}
+  .consent-detail.hidden{display:none;}
+  .consent-detail b{color:var(--text);font-weight:600;display:block;margin-bottom:6px;font-size:12.5px;}
+  .consent-detail .sec{margin-bottom:7px;}
+  .consent-detail .sec i{color:var(--text);font-style:normal;font-weight:600;}
+
+  .tier{margin:18px auto 4px;max-width:320px;}
+  .tier-badge{font-size:44px;line-height:1;}
+  .tier-title{font-family:var(--pixel);font-weight:400;font-size:16px;margin:12px 0 8px;line-height:1.4;}
+  .tier-msg{color:var(--text-dim);font-size:14px;line-height:1.5;}
+  .tier.premium .tier-title{color:var(--signal);}
+  .tier.entry .tier-title{color:var(--caution);}
+  .tier.none .tier-title{color:var(--text-dim);}
+  .dup-note{color:var(--caution);font-family:var(--hud);font-size:12px;margin:10px auto 0;max-width:30ch;line-height:1.5;min-height:16px;}
+
+  .foot{margin-top:16px;text-align:center;font-size:9px;letter-spacing:.06em;color:#4A566A;
+    font-family:var(--pixel);z-index:11;line-height:1.6;}
+
+  #controls{position:absolute;left:0;right:0;bottom:0;z-index:9;display:flex;gap:10px;
+    padding:14px 12px calc(18px + env(safe-area-inset-bottom));touch-action:none;}
+  #controls.hidden{display:none;}
+  .ctl{flex:1;height:80px;border:none;border-radius:6px;cursor:pointer;display:grid;place-items:center;
+    color:var(--text);font-family:var(--pixel);font-size:12px;letter-spacing:.02em;
+    background:#123247;border:2px solid rgba(21,176,234,.5);box-shadow:0 5px 0 rgba(0,0,0,.4);
+    -webkit-user-select:none;user-select:none;touch-action:none;transition:transform .05s,box-shadow .05s;}
+  .ctl.side{color:var(--signal);}
+  .ctl.brake{flex:1.15;color:var(--caution);background:#3a2c12;border-color:rgba(245,166,35,.55);}
+  .ctl.pressed{transform:translateY(4px);box-shadow:0 1px 0 rgba(0,0,0,.4);}
+</style>
+</head>
+<body>
+<div id="app"><div id="stage">
+  <canvas id="game"></canvas>
+
+  <div id="controls" class="hidden">
+    <button class="ctl side" id="btnLeft" aria-label="left">
+      <svg viewBox="0 0 24 24" width="34" height="34"><path d="M15 5l-7 7 7 7" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"/></svg>
+    </button>
+    <button class="ctl brake" id="btnBrake" aria-label="brake">브레이크</button>
+    <button class="ctl side" id="btnRight" aria-label="right">
+      <svg viewBox="0 0 24 24" width="34" height="34"><path d="M9 5l7 7-7 7" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"/></svg>
+    </button>
+  </div>
+
+  <!-- START -->
+  <div class="screen" id="startScreen">
+    <div class="langsw" id="langSw">
+      <button data-lang="ko" class="on">한국어</button>
+      <button data-lang="en">ENG</button>
+    </div>
+    <div class="brand">MDS TECH · COHDA WIRELESS</div>
+    <h1>V2X<span class="drive">DRIVE</span></h1>
+    <p class="tag" id="tag">위험이 보이기도 전에,<br><b>V2X 신호가 먼저 도착합니다.</b></p>
+
+    <div class="how">
+      <div class="hrow"><span class="hi warn"><svg viewBox="0 0 12 12" width="22" height="22" fill="currentColor" shape-rendering="crispEdges"><rect x="5" y="1" width="2" height="6"/><rect x="5" y="9" width="2" height="2"/></svg></span>
+        <p id="how1">도로변 <b>RSU</b>가 위험을 감지해 신호를 쏘면,<br>차의 파란 <b>OBU</b>가 먼저 경고를 받아요.</p></div>
+      <div class="hrow"><span class="hi sig"><svg viewBox="0 0 12 12" width="24" height="24" fill="currentColor" shape-rendering="crispEdges"><rect x="4" y="3" width="2" height="1"/><rect x="3" y="4" width="3" height="1"/><rect x="2" y="5" width="4" height="1"/><rect x="2" y="6" width="4" height="1"/><rect x="3" y="7" width="3" height="1"/><rect x="4" y="8" width="2" height="1"/><rect x="6" y="3" width="2" height="1"/><rect x="6" y="4" width="3" height="1"/><rect x="6" y="5" width="4" height="1"/><rect x="6" y="6" width="4" height="1"/><rect x="6" y="7" width="3" height="1"/><rect x="6" y="8" width="2" height="1"/></svg></span>
+        <p id="how2">경고가 뜬 차선을 <b>보이기 전에</b> 피하세요.<br>버튼·스와이프로 차선 변경, 브레이크로 감속.</p></div>
+      <div class="hrow"><span class="hi obu"><svg viewBox="0 0 12 12" width="24" height="24" fill="currentColor" shape-rendering="crispEdges"><rect x="2" y="1" width="1" height="10"/><rect x="3" y="1" width="2" height="2"/><rect x="7" y="1" width="2" height="2"/><rect x="5" y="3" width="2" height="2"/><rect x="9" y="3" width="2" height="2"/><rect x="3" y="5" width="2" height="2"/><rect x="7" y="5" width="2" height="2"/></svg></span>
+        <p id="how3">멀리 달릴수록 점수가 오르고,<br>아슬아슬하게 피하면 <b>보너스</b>가 붙어요.</p></div>
+    </div>
+
+    <button class="btn" id="startBtn">참여하기</button>
+  </div>
+
+  <!-- LEAD FORM -->
+  <div class="screen hidden" id="leadScreen">
+    <div class="brand">MDS TECH · COHDA WIRELESS</div>
+    <h2 class="lead-title" id="leadTitle">참가 정보 입력</h2>
+    <p class="lead-sub" id="leadSub">정보를 남기고 게임에 참여하세요.</p>
+    <form id="leadForm" autocomplete="off">
+      <div class="f"><input type="text" id="fName" placeholder="이름" maxlength="20"></div>
+      <div class="f"><input type="text" id="fCompany" placeholder="회사명" maxlength="40"></div>
+      <div class="f"><input type="text" id="fTitle" placeholder="부서/직급" maxlength="30"></div>
+      <div class="f"><input type="email" id="fEmail" placeholder="이메일"></div>
+      <div class="f phone-row">
+        <input type="text" id="fCC" class="cc" placeholder="+82" maxlength="5" value="+82">
+        <input type="tel" id="fPhone" placeholder="휴대폰번호" maxlength="20">
+      </div>
+      <label class="consent"><input type="checkbox" id="fConsent">
+        <span id="consentShort">(필수) 개인정보 수집·이용에 동의합니다.</span></label>
+      <button type="button" class="detail-toggle" id="detailToggle">자세히 ▾</button>
+      <div class="consent-detail hidden" id="consentDetail"></div>
+      <div class="err" id="formErr"></div>
+      <button type="button" class="btn" id="leadSubmit">게임 시작</button>
+    </form>
+  </div>
+
+  <!-- RESULT -->
+  <div class="screen hidden" id="overScreen">
+    <div class="brand" id="overMode">V2X DRIVE</div>
+    <div class="go-score"><span class="n" id="finalScore">0</span><span class="u" id="scoreUnit">M 주행</span></div>
+    <div class="tier" id="tierBox">
+      <div class="tier-badge" id="tierBadge">🎉</div>
+      <div class="tier-title" id="tierTitle"></div>
+      <div class="tier-msg" id="tierMsg"></div>
+    </div>
+    <p class="dup-note" id="dupNote"></p>
+    <button class="btn" id="retryBtn">다시 하기</button>
+    <div class="foot">POWERED BY V2X · COHDA WIRELESS</div>
+  </div>
+</div></div>
+
+<script>
+/* =========================================================================
+   V2X DRIVE — 의사3D 원근 주행 (Cohda OBU on car + roadside RSU)
+   리드 수집 연동: 아래 APPS_SCRIPT_URL 한 줄만 채우면 Google Sheets로 전송.
+   ========================================================================= */
+const APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbyZr_dLCfEh_n1XcU49MD_bmNdo-xuRDAss347XeYSiZxTdmGKzcUnrUXeUzBtOzTtR/exec";
+/* 완성 단계: 리드 입력 사용 */
+const COLLECT_LEAD = true;
+const TIME_LIMIT = 60;    // 플레이 제한 시간 (초)
+/* 점수 컷 — 현장에서 이 숫자만 바꾸면 됩니다 (점) */
+const CUT_PRIZE = 1000;   // 1000 이상 텀블러, 미만 간식
+let lead = null, timeLeft = TIME_LIMIT, sessionRecorded = false;
+
+const cv=document.getElementById('game');
+const ctx=cv.getContext('2d');
+let W=0,H=0,DPR=1;
+function resize(){
+  const st=document.getElementById('stage').getBoundingClientRect();
+  DPR=Math.min(window.devicePixelRatio||1,2); W=st.width; H=st.height;
+  cv.width=W*DPR; cv.height=H*DPR; ctx.setTransform(DPR,0,0,DPR,0,0);
+  ctx.imageSmoothingEnabled=false;
+  buildStars();
+  layoutRoad();
+}
+window.addEventListener('resize',resize);
+
+/* ---------- perspective projection ---------- */
+const LANES=3;
+const Z_NEAR=1.0, Z_FAR=9.0, Z_HIT=1.5, Z_PLAYER=1.15;
+let horizonY=0, playerBaseY=0, nearHalf=0, farHalf=0;
+function layoutRoad(){
+  horizonY=H*0.17; playerBaseY=H*0.80;
+  nearHalf=Math.min(W*0.46,235); farHalf=nearHalf*0.09;
+}
+const roadCx=()=>W/2;
+function proj(z){
+  const s=1/z, sN=1/Z_NEAR, sF=1/Z_FAR;
+  const tt=(s-sF)/(sN-sF);
+  return {sy:horizonY+(playerBaseY-horizonY)*tt, half:farHalf+(nearHalf-farHalf)*tt, tt, scale:0.20+0.80*tt};
+}
+function laneX(lane,half){ return roadCx()+(lane-1)*(2*half/3); }
+
+let stars=[];
+function buildStars(){
+  stars=[]; const n=Math.round(W*H/9000);
+  const cols=['#EAF0F7','#9FB8E8','#FFE9B0','#FF9FB0','#15B0EA'];
+  for(let i=0;i<n;i++) stars.push({x:Math.random()*W, y:Math.random()*(horizonY||H*0.32), s:Math.random()<0.3?2:1, c:cols[(Math.random()*cols.length)|0], tw:Math.random()*6.28});
+}
+
+/* ---------- state ---------- */
+let state='start';
+let dist=0, speed=0, baseSpeed=2.5, maxSpeed=5.2;   // z-units per second (gentler)
+let dashPhase=0;
+let player={lane:1, x:0, tx:0};
+let hazards=[], warns=[], rsus=[], pops=[], feed=[], overlayLabels=[];
+let spawnTimer=0, spawnGap=1.35, rsuTimer=1.4;
+let braking=0, holdBrake=false, shake=0, crashFlash=0, lastTs=0;
+let countdown=0, stage=1, lastStage=1, speedUp=0;
+let dead=false;
+
+const HKINDS=['stopped','brake','cross','wrong'];
+const HWEIGHT={stopped:0.36,brake:0.32,cross:0.22,wrong:0.10};
+function pickKind(){ let r=Math.random(),a=0; for(const k of HKINDS){a+=HWEIGHT[k]; if(r<=a)return k;} return 'stopped'; }
+
+function resetGame(){
+  dist=0; speed=baseSpeed; hazards=[]; warns=[]; rsus=[]; pops=[]; feed=[];
+  spawnTimer=0.7; spawnGap=1.35; rsuTimer=1.2; braking=0; shake=0; crashFlash=0;
+  dashPhase=0; countdown=3; stage=1; lastStage=1; speedUp=0; timeLeft=TIME_LIMIT;
+  player.lane=1; player.x=laneX(1,nearHalf); player.tx=player.x;
+}
+
+/* ---------- i18n ---------- */
+let LANG='ko';
+const T={
+  ko:{
+    tag:'위험이 보이기도 전에,<br><b>V2X 신호가 먼저 도착합니다.</b>',
+    how1:'도로변 <b>RSU</b>가 위험을 감지해 신호를 쏘면,<br>차의 파란 <b>OBU</b>가 먼저 경고를 받아요.',
+    how2:'경고가 뜬 차선을 <b>보이기 전에</b> 피하세요.<br>버튼·스와이프로 차선 변경, 브레이크로 감속.',
+    how3:'멀리 달릴수록 점수가 오르고,<br>아슬아슬하게 피하면 <b>보너스</b>가 붙어요.',
+    closer:'미리 아는 만큼 더 멀리 간다 — 그게 V2X입니다.',
+    start:'게임 시작', foot:'버튼 또는 스와이프로 조작 · ◀ ▶ 차선 · 브레이크', brake:'브레이크',
+    leadTitle:'참가 정보 입력', leadSub:'정보를 남기고 게임에 참여하세요.',
+    ph:{name:'이름',company:'회사명',title:'부서/직급',email:'이메일',phone:'휴대폰번호'},
+    consentShort:'(필수) 개인정보 수집·이용에 동의합니다.',
+    detailOpen:'자세히 ▾', detailClose:'접기 ▴',
+    consentDetail:'<b>수집하는 개인정보 안내</b>'
+      +'<div class="sec"><i>① 수집 항목</i><br>이름, 회사명, 부서/직급, 이메일, 휴대폰번호</div>'
+      +'<div class="sec"><i>② 수집·이용 목적</i><br>전시회 이벤트 경품 제공 및 참가 확인, 제품·행사 관련 정보 안내 및 마케팅 활용</div>'
+      +'<div class="sec"><i>③ 보유·이용 기간</i><br>수집일로부터 1년 또는 동의 철회 시까지 (목적 달성·기간 경과 시 지체 없이 파기)</div>'
+      +'<div class="sec"><i>④ 동의 거부 권리</i><br>동의를 거부하실 수 있으며, 이 경우 이벤트 경품 제공이 제한될 수 있습니다.</div>'
+      +'수집·이용 주체: MDS테크 · 수집된 정보는 회사 개인정보 처리방침에 따라 관리되며, 목적 외로 이용하거나 제3자에게 제공하지 않습니다.',
+    leadSubmit:'게임 시작',
+    scoreUnit:'M 주행',
+    errAll:'모든 항목을 입력해 주세요.', errEmail:'이메일을 확인해 주세요.',
+    errPhone:'휴대폰번호를 확인해 주세요.', errConsent:'개인정보 수집·이용 동의가 필요합니다.',
+    dup:'이미 참여하셨습니다. (1인 1회)', dupNote:'이미 참여하셔서 기록되지 않았습니다 · 경품은 1인 1회',
+    retry:'다시 하기',
+    tierPrize:{b:'🎉',t:'접이식 텀블러 당첨!',m:`${CUT_PRIZE}점 돌파! 이 화면을 스탭에게 보여주세요.`},
+    tierSnack:{b:'🍬',t:'간식 당첨!',m:'참여 감사합니다! 이 화면을 스탭에게 보여주세요.'},
+    cdSub:'RSU 경고를 보고 미리 피하세요', dodge:'회피',
+    lane:n=>`${n}차로`, haz:{stopped:'정지차량',brake:'앞차 급정거',cross:'보행자 횡단',wrong:'역주행 차량'},
+    ped:'보행자', pedFeed:'보행자 횡단 감지'
+  },
+  en:{
+    tag:'Before you even see it,<br><b>the V2X signal arrives first.</b>',
+    how1:'A roadside <b>RSU</b> detects the hazard and broadcasts;<br>the blue <b>OBU</b> on your car gets the alert first.',
+    how2:'Dodge a warned lane <b>before</b> you can see it.<br>Buttons/swipe to change lane, brake to slow.',
+    how3:'The farther you drive, the higher the score,<br>and near-misses earn a <b>bonus</b>.',
+    closer:"Know sooner, drive farther — that's V2X.",
+    start:'START', foot:'Buttons or swipe · ◀ ▶ lanes · brake', brake:'BRAKE',
+    leadTitle:'Enter your details', leadSub:'Register to play the game.',
+    ph:{name:'Name',company:'Company',title:'Dept./Title',email:'Email',phone:'Mobile phone'},
+    consentShort:'(Required) I agree to the collection and use of my personal data.',
+    detailOpen:'Details ▾', detailClose:'Close ▴',
+    consentDetail:'<b>Personal Data Collection & Use</b>'
+      +'<div class="sec"><i>① Data collected</i><br>Name, company, department/title, email, mobile phone number</div>'
+      +'<div class="sec"><i>② Purpose</i><br>Providing and verifying event prizes; product/event info and marketing use</div>'
+      +'<div class="sec"><i>③ Retention</i><br>1 year from collection or until consent is withdrawn (destroyed without delay once fulfilled)</div>'
+      +'<div class="sec"><i>④ Right to decline</i><br>You may decline; in that case, event prize provision may be limited.</div>'
+      +'Collected by MDS Tech · Managed under the company privacy policy; not used for other purposes or shared with third parties.',
+    leadSubmit:'START GAME',
+    scoreUnit:'M DRIVEN',
+    errAll:'Please fill in all fields.', errEmail:'Please check your email.',
+    errPhone:'Please check your phone number.', errConsent:'Please agree to the consent.',
+    dup:'You have already participated. (once per person)', dupNote:'Already participated — not recorded · one prize per person',
+    retry:'Retry',
+    tierPrize:{b:'🎉',t:'Foldable tumbler!',m:`Over ${CUT_PRIZE} points! Show this screen to the staff.`},
+    tierSnack:{b:'🍬',t:'Snack prize!',m:'Thanks for playing! Show this screen to the staff.'},
+    cdSub:'Watch the RSU warning and dodge early', dodge:'DODGE',
+    lane:n=>`Lane ${n}`, haz:{stopped:'Stopped car',brake:'Braking ahead',cross:'Pedestrian',wrong:'Wrong-way car'},
+    ped:'Pedestrian', pedFeed:'Pedestrian crossing'
+  }
+};
+function t(){ return T[LANG]; }
+function setLang(l){
+  LANG=l; const d=T[l];
+  const set=(id,html)=>{const e=document.getElementById(id); if(e) e.innerHTML=html;};
+  set('tag',d.tag); set('how1',d.how1); set('how2',d.how2); set('how3',d.how3);
+  set('closer',d.closer); set('startBtn',d.start); set('startFoot',d.foot);
+  set('leadTitle',d.leadTitle); set('leadSub',d.leadSub); set('consentShort',d.consentShort);
+  set('consentDetail',d.consentDetail); set('leadSubmit',d.leadSubmit);
+  set('scoreUnit',d.scoreUnit); set('retryBtn',d.retry);
+  const dt=document.getElementById('detailToggle');
+  if(dt) dt.textContent = document.getElementById('consentDetail').classList.contains('hidden')?d.detailOpen:d.detailClose;
+  const bb=document.getElementById('btnBrake'); if(bb) bb.textContent=d.brake;
+  fName.placeholder=d.ph.name; fCompany.placeholder=d.ph.company; fTitle.placeholder=d.ph.title;
+  fEmail.placeholder=d.ph.email; fPhone.placeholder=d.ph.phone;
+  document.querySelectorAll('#langSw button').forEach(b=>b.classList.toggle('on',b.dataset.lang===l));
+}
+
+/* ---------- input ---------- */
+let touchStart=null;
+function onDown(x,y){touchStart={x,y};}
+function onUp(x,y){
+  if(!touchStart) return;
+  const dx=x-touchStart.x, dy=y-touchStart.y, adx=Math.abs(dx), ady=Math.abs(dy);
+  if(adx<24&&ady<24){touchStart=null;return;}
+  if(adx>ady) move(dx>0?1:-1); else if(dy>0) brake();
+  touchStart=null;
+}
+cv.addEventListener('touchstart',e=>{const t=e.changedTouches[0];onDown(t.clientX,t.clientY);},{passive:true});
+cv.addEventListener('touchend',e=>{const t=e.changedTouches[0];onUp(t.clientX,t.clientY);},{passive:true});
+cv.addEventListener('mousedown',e=>onDown(e.clientX,e.clientY));
+cv.addEventListener('mouseup',e=>onUp(e.clientX,e.clientY));
+window.addEventListener('keydown',e=>{ if(state!=='play')return;
+  if(e.key==='ArrowLeft')move(-1); else if(e.key==='ArrowRight')move(1); else if(e.key==='ArrowDown')brake(); });
+function move(dir){ if(state!=='play'||countdown>0)return; player.lane=Math.max(0,Math.min(LANES-1,player.lane+dir)); player.tx=laneX(player.lane,nearHalf); }
+function brake(){ if(state==='play')braking=0.7; }
+function bindPress(el,d,u){
+  const dn=e=>{e.preventDefault();el.classList.add('pressed');d&&d();};
+  const up=e=>{e.preventDefault();el.classList.remove('pressed');u&&u();};
+  el.addEventListener('pointerdown',dn); el.addEventListener('pointerup',up);
+  el.addEventListener('pointercancel',up); el.addEventListener('pointerleave',up);
+}
+bindPress(document.getElementById('btnLeft'),()=>move(-1));
+bindPress(document.getElementById('btnRight'),()=>move(1));
+bindPress(document.getElementById('btnBrake'),()=>{holdBrake=true;brake();},()=>{holdBrake=false;});
+
+/* ---------- spawning ---------- */
+function pushFeed(text){ feed.push({text,t:0,life:2.4}); }
+function scheduleSpawn(){
+  const kind=pickKind();
+  if(kind==='cross'){
+    const fromLeft=Math.random()<0.5, lead=2.0;
+    warns.push({lane:-1,t:0,life:lead,kind:'cross'}); pushFeed(t().pedFeed);
+    hazards.push({kind:'cross', z:Z_FAR, u:fromLeft?0:1, du:(fromLeft?1:-1)*0.5, walking:false, rate:0.85, hit:false, passed:false, pz:Z_FAR});
+  }else{
+    const lane=(Math.random()*LANES)|0, lead=(kind==='wrong'?2.2:1.9);
+    warns.push({lane,t:0,life:lead,kind}); pushFeed(`${t().lane(lane+1)} ${t().haz[kind]}`);
+    const rate = kind==='brake'?0.6 : (kind==='wrong'?1.3:1);
+    setTimeout(()=>{ if(state==='play') hazards.push({kind,lane,z:Z_FAR,rate,hit:false,passed:false,pz:Z_FAR}); }, lead*1000);
+  }
+}
+function spawnRSU(){ rsus.push({z:Z_FAR, side:Math.random()<0.5?-1:1, pulse:0}); }
+
+/* ---------- update ---------- */
+function update(dt){
+  if(countdown>0){ countdown-=dt; return; }
+  timeLeft-=dt;
+  if(timeLeft<=0){ timeLeft=0; if(state==='play'){ gameOver(); } return; }
+  if(holdBrake) braking=Math.max(braking,0.5);
+  speed=Math.min(maxSpeed, baseSpeed+dist*0.0009);
+  const sp=speed*(braking>0?0.06:1);   // brake = near-full stop
+  if(braking>0) braking-=dt;
+
+  dist += sp*dt*9;
+  dashPhase=(dashPhase+sp*dt*1.1);
+  stage=Math.floor(dist/300)+1;
+  if(stage>lastStage){lastStage=stage; speedUp=1.4;}
+  if(speedUp>0) speedUp-=dt;
+
+  player.x += (player.tx-player.x)*Math.min(1,dt*14);
+
+  spawnTimer-=dt;
+  if(spawnTimer<=0){ scheduleSpawn(); spawnGap=Math.max(1.0,1.75-dist*0.00006); spawnTimer=spawnGap*(0.85+Math.random()*0.45); }
+  rsuTimer-=dt;
+  if(rsuTimer<=0){ spawnRSU(); rsuTimer=3.2+Math.random()*2.2; }
+
+  for(const w of warns) w.t+=dt; warns=warns.filter(w=>w.t<w.life);
+  for(const f of feed) f.t+=dt; feed=feed.filter(f=>f.t<f.life);
+  for(const p of pops){ p.t+=dt; p.y-=34*dt; } pops=pops.filter(p=>p.t<p.life);
+
+  const warnActive=warns.length>0;
+  for(const r of rsus){ r.z-=sp*dt; r.pulse = warnActive?(r.pulse+dt*1.6):0; }
+  rsus=rsus.filter(r=>r.z>Z_NEAR-0.6);
+
+  // while a pedestrian is crossing, cars behind the crosswalk stop at a red-light line
+  let crossStopZ=0;
+  for(const hz of hazards) if(hz.kind==='cross') crossStopZ=Math.max(crossStopZ, hz.z+0.7);
+  for(const hz of hazards){
+    if(hz.kind==='cross'){
+      hz.pz=hz.z; hz.z-=sp*dt*hz.rate;
+      if(hz.z<=4.2) hz.walking=true;
+      if(hz.walking) hz.u+=hz.du*dt;
+    }
+    else{
+      hz.pz=hz.z;
+      if(crossStopZ>0 && hz.z>crossStopZ) hz.z=Math.max(crossStopZ, hz.z-sp*dt*hz.rate); // queue behind red light
+      else hz.z-=sp*dt*hz.rate;                                                            // otherwise normal
+    }
+  }
+  // collisions + near-miss
+  for(const hz of hazards){
+    if(hz.hit) continue;
+    if(hz.kind==='cross'){
+      if(hz.z<=Z_HIT+0.4 && hz.z>Z_PLAYER-0.25){
+        const p=proj(hz.z), px=roadCx()+(hz.u*2-1)*p.half*0.92;
+        if(Math.abs(px-player.x) < (2*p.half/3)*0.5+8) crash();
+      }
+    }else{
+      if(hz.lane===player.lane && hz.z<=Z_HIT && hz.z>Z_PLAYER-0.2) crash();
+      if(!hz.passed && hz.pz>Z_PLAYER && hz.z<=Z_PLAYER){
+        hz.passed=true;
+        if(Math.abs(hz.lane-player.lane)===1){ const p=proj(Z_PLAYER); addBonus(30,`${t().dodge} +30`,laneX(hz.lane,p.half),p.sy-40); }
+      }
+    }
+  }
+  hazards=hazards.filter(hz=> hz.z>Z_NEAR-0.5 && (hz.kind!=='cross' || (hz.u>-0.3 && hz.u<1.3)));
+
+  if(shake>0) shake-=dt*60;
+  if(crashFlash>0) crashFlash-=dt*2.4;
+}
+function addBonus(pts,text,x,y){ dist+=pts; pops.push({x,y,t:0,life:0.9,text,color:'#15B0EA'}); }
+function crash(){ if(dead)return; dead=true; shake=16; crashFlash=1; setTimeout(gameOver,420); }
+
+/* ---------- draw ---------- */
+function draw(){
+  let ox=0,oy=0; if(shake>0){ox=(Math.random()-.5)*shake;oy=(Math.random()-.5)*shake;}
+  drawSky();
+  ctx.save(); ctx.translate(ox,oy);
+  drawRoad();
+  const items=[];
+  for(const r of rsus) items.push({z:r.z,type:'rsu',o:r});
+  for(const hz of hazards) items.push({z:hz.z,type:'haz',o:hz});
+  items.sort((a,b)=>b.z-a.z);
+  drawWarnZones();
+  for(const it of items){ if(it.type==='rsu') drawRSU(it.o); else drawHazard(it.o); }
+  if(!dead||crashFlash>0.3) drawPlayer();
+  drawPops();
+  ctx.restore();
+  renderOverlayLabels();
+  drawHUD(); drawCountdown(); drawSpeedUp();
+  if(crashFlash>0){ ctx.fillStyle=`rgba(255,51,85,${Math.min(.55,crashFlash*.55)})`; ctx.fillRect(0,0,W,H); }
+}
+
+function drawSky(){
+  ctx.fillStyle='#0a0e1c'; ctx.fillRect(0,0,W,horizonY);
+  // stars (flat squares, gentle twinkle)
+  for(const s of stars){
+    const tw=0.55+0.45*Math.sin(performance.now()/500+s.tw);
+    ctx.globalAlpha=tw; ctx.fillStyle=s.c;
+    ctx.fillRect(Math.floor(s.x),Math.floor(s.y),s.s,s.s);
+  }
+  ctx.globalAlpha=1;
+  // horizon glow band (flat colors, no gradient)
+  ctx.fillStyle='#241a2e'; ctx.fillRect(0,horizonY-8,W,8);
+  ctx.fillStyle='#3a2440'; ctx.fillRect(0,horizonY-3,W,3);
+  ctx.fillStyle='#070B14'; ctx.fillRect(0,horizonY,W,H-horizonY);
+}
+function drawRoad(){
+  const PU=Math.max(3,Math.round(W/110));          // pixel band height
+  ctx.fillStyle='#0b1224'; ctx.fillRect(0,horizonY,W,H-horizonY);   // ground
+  const bottom=H, span=playerBaseY-horizonY;
+  for(let y=horizonY; y<bottom; y+=PU){
+    let tt=(y-horizonY)/span; const half=farHalf+(nearHalf-farHalf)*Math.min(1.35,tt);
+    const cx=roadCx(), bi=Math.floor((y-horizonY)/PU);
+    // scrolling road shade (two greys alternate → motion)
+    const lit=(bi+Math.floor(dashPhase))%2===0;
+    ctx.fillStyle=lit?'#1b2333':'#151b28';
+    ctx.fillRect(Math.floor(cx-half),y,Math.ceil(half*2),PU);
+    // grass strips just outside
+    ctx.fillStyle=lit?'#123020':'#0e2418';
+    ctx.fillRect(Math.floor(cx-half-PU*1.6),y,Math.ceil(PU*1.6),PU);
+    ctx.fillRect(Math.floor(cx+half),y,Math.ceil(PU*1.6),PU);
+    // white edge lines
+    ctx.fillStyle='#e6ecf4';
+    ctx.fillRect(Math.floor(cx-half),y,Math.max(1,Math.round(PU*0.4)),PU);
+    ctx.fillRect(Math.floor(cx+half-PU*0.4),y,Math.max(1,Math.round(PU*0.4)),PU);
+    // dashed lane dividers (blocks on alternate bands)
+    if(lit){
+      const dw=Math.max(1,Math.round(half*0.06));
+      ctx.fillStyle='#c8d2e0';
+      ctx.fillRect(Math.floor(cx-half/3-dw/2),y,dw,PU);
+      ctx.fillRect(Math.floor(cx+half/3-dw/2),y,dw,PU);
+    }
+  }
+}
+
+function drawWarnZones(){
+  for(const w of warns){
+    const pulse=0.5+0.5*Math.sin(w.t*16);
+    if(w.kind==='cross'){
+      // band across all lanes at mid depth
+      const a=proj(1.0), b=proj(4.5);
+      ctx.fillStyle=`rgba(245,166,35,${0.12+0.12*pulse})`;
+      ctx.beginPath();
+      ctx.moveTo(roadCx()-b.half,b.sy); ctx.lineTo(roadCx()+b.half,b.sy);
+      ctx.lineTo(roadCx()+a.half,a.sy); ctx.lineTo(roadCx()-a.half,a.sy); ctx.closePath(); ctx.fill();
+      const m=proj(3.0); warnLabel(roadCx(),m.sy,t().ped,'#F5A623',pulse);
+    }else{
+      const a=proj(1.0), b=proj(5.0);
+      const col=w.kind==='wrong'?'#FF3355':'#FF5A5A';
+      ctx.fillStyle=`rgba(255,51,85,${0.13+0.12*pulse})`;
+      const xA=laneX(w.lane,a.half), xB=laneX(w.lane,b.half);
+      ctx.beginPath();
+      ctx.moveTo(xB-(2*b.half/3)/2,b.sy); ctx.lineTo(xB+(2*b.half/3)/2,b.sy);
+      ctx.lineTo(xA+(2*a.half/3)/2,a.sy); ctx.lineTo(xA-(2*a.half/3)/2,a.sy); ctx.closePath(); ctx.fill();
+      const m=proj(3.2); warnLabel(laneX(w.lane,m.half),m.sy,t().haz[w.kind],col,pulse);
+    }
+  }
+}
+function warnLabel(x,y,text,color,pulse){
+  overlayLabels.push({kind:'warn',x,y,text,color,a:0.85+0.15*pulse});
+}
+
+function drawCrosswalk(z){
+  const zn=Math.max(Z_NEAR,z-0.45), zf=z+0.45;
+  const a=proj(zn), b=proj(zf), stripes=6;
+  ctx.fillStyle='rgba(232,238,246,.82)';
+  for(let s=0;s<stripes;s++){
+    const f0=(s+0.12)/stripes, f1=(s+0.88)/stripes;
+    const nax=roadCx()+(f0*2-1)*a.half, nbx=roadCx()+(f1*2-1)*a.half;
+    const fax=roadCx()+(f0*2-1)*b.half, fbx=roadCx()+(f1*2-1)*b.half;
+    ctx.beginPath(); ctx.moveTo(fax,b.sy); ctx.lineTo(fbx,b.sy); ctx.lineTo(nbx,a.sy); ctx.lineTo(nax,a.sy); ctx.closePath(); ctx.fill();
+  }
+}
+function drawTrafficLight(z){
+  const p=proj(z), s=p.scale*1.2;
+  const x=roadCx()+(p.half+20*s), sy=p.sy, poleH=60*s;
+  pr(x-1.5*s,sy-poleH,3*s,poleH,'#5A6678');
+  const hw=16*s, hh=38*s, hx=x-hw/2, hy=sy-poleH-hh, lr=hw*0.62;
+  pr(hx,hy,hw,hh,'#0e1119');
+  pr(x-lr/2,hy+hh*0.10,lr,lr,'#FF3B4E');   // red lit
+  pr(x-lr/2,hy+hh*0.42,lr,lr,'#3a3020');   // amber off
+  pr(x-lr/2,hy+hh*0.74,lr,lr,'#1d3b27');   // green off
+}
+function cohdaDots(x,y,s,color){
+  const pts=[[0,0],[1,0],[2,0],[0.5,1],[1.5,1],[2.5,1],[1,2],[2,2],[1.5,3]];
+  for(const p of pts) pr(x+p[0]*s, y+p[1]*s, s*0.8, s*0.8, color);
+}
+/* pixel car — front=true shows the FRONT (headlights, grille, windshield) coming at you */
+function drawCarBody(cx,sy,scale,body,glass,light,front){
+  const u=Math.max(2,3.2*scale), cw=12*u, x=cx-cw/2, top=sy-15*u;
+  pr(cx-cw/2, sy-1*u, cw, 1.3*u, 'rgba(0,0,0,.4)');        // shadow
+  pr(x-0.4*u, sy-4.5*u, 2*u, 3.2*u, '#0a0c11');            // wheels
+  pr(x+cw-1.6*u, sy-4.5*u, 2*u, 3.2*u, '#0a0c11');
+  pr(x+3*u, top, 6*u, 4*u, shade(body,0.82));              // roof/cabin
+  pr(x+3.7*u, top+0.8*u, 4.6*u, 2.3*u, glass);             // windshield / rear window
+  pr(x+2*u, top+4*u, 8*u, 2*u, body);                      // shoulders
+  pr(x+1*u, top+6*u, 10*u, 6*u, body);                     // main body
+  pr(x+1*u, top+6*u, 10*u, 0.9*u, shade(body,1.32));       // top highlight
+  pr(x+1*u, top+11*u, 10*u, 1*u, shade(body,0.6));         // lower shade
+  const ly=sy-5.2*u;
+  if(front){
+    // grille + big bright headlights + glow (oncoming)
+    pr(x+4*u, sy-4.4*u, 4*u, 1.8*u, '#0c0c10');            // grille
+    pr(x+1*u, sy-3.2*u, 10*u, 1.5*u, shade(body,0.5));     // front bumper
+    pr(x+1*u,ly-0.4*u,3*u,2.6*u,'#FFF7C0');                // headlights (big, warm-white)
+    pr(x+cw-4*u,ly-0.4*u,3*u,2.6*u,'#FFF7C0');
+    ctx.globalAlpha=.35; pr(x+0.4*u,ly,3.4*u,3*u,'#FFF7C0'); pr(x+cw-4.4*u,ly,3.4*u,3*u,'#FFF7C0'); ctx.globalAlpha=1; // glow
+  }else{
+    pr(x+1*u, sy-3.2*u, 10*u, 1.5*u, shade(body,0.45));    // rear bumper
+    pr(x+1.6*u,ly,2.6*u,1.7*u,light);                      // taillights
+    pr(x+cw-4.2*u,ly,2.6*u,1.7*u,light);
+  }
+}
+function drawPlayer(){
+  const scale=1.3, cx=player.x, sy=playerBaseY, u=Math.max(2,3.2*scale);
+  drawCarBody(cx,sy,scale,'#2456A0','#0C1826','#EAF0F7',false);
+  // Cohda OBU on the roof
+  const bw=8*u, bh=4.5*u, bx=cx-bw/2, oy=sy-15*u-bh+0.6*u;
+  pr(bx,oy,bw,bh,'#1560C0'); pr(bx,oy,bw,1.2,'#3E97F2');
+  for(let i=1;i<5;i++) pr(bx+bw*i/5, oy+1, 1, bh-2, 'rgba(255,255,255,.3)');
+  cohdaDots(bx+1*u, oy+1*u, 0.9*u, 'rgba(255,255,255,.95)');
+  const blink=Math.sin(performance.now()/180)>0;
+  pr(bx+bw-1.5*u, oy+bh*0.3, 1*u, 1*u, blink?'#15B0EA':'#0b5a80');
+}
+function drawHazard(hz){
+  const p=proj(hz.z), scale=p.scale;
+  if(hz.kind==='cross'){
+    drawCrosswalk(hz.z); drawTrafficLight(hz.z);
+    const x=roadCx()+(hz.u*2-1)*p.half*0.92, u=Math.max(2,3.2*scale*1.1), y=p.sy;
+    pr(x-2.5*u,y+3*u,5*u,u,'rgba(0,0,0,.35)');            // shadow
+    pr(x-1.5*u,y-4.5*u,3*u,3*u,'#FFC94D');               // head
+    pr(x-2*u,y-2*u,4*u,4*u,'#F5A623');                    // body
+    const step=hz.walking?(Math.sin(performance.now()/90)>0?1:-1):0;
+    pr(x-2*u,y+2*u,1.6*u,2.4*u,'#F5A623'); pr(x+0.5*u+step*0.4*u,y+2*u,1.6*u,2.4*u,'#F5A623'); // legs
+    return;
+  }
+  const x=laneX(hz.lane,p.half);
+  if(hz.kind==='wrong'){
+    const u=Math.max(2,3.4*scale);
+    pr(x-3*u,p.sy-1.5*u,1.5*u,1.5*u,'#FFFDF0'); pr(x+1.5*u,p.sy-1.5*u,1.5*u,1.5*u,'#FFFDF0'); // headlight glow blocks
+    drawCarBody(x,p.sy,scale,'#8A2636','#180a0e','#FFFFFF',true);
+  }else if(hz.kind==='brake'){
+    drawCarBody(x,p.sy,scale,'#4a3f5e','#141018','#FF3355',false);
+    pr(x-5*scale,p.sy-2*scale,10*scale,2.5*scale,'#FF3355');
+  }else{
+    drawCarBody(x,p.sy,scale,'#6E5A34','#161009','#F5A623',false);
+    const u=Math.max(2,3.4*scale);
+    pr(x-1.2*u,p.sy-9*u,2.4*u,2.4*u,'#F5A623');           // hazard block above
+  }
+}
+function drawRSU(r){
+  const p=proj(r.z), scale=p.scale*1.25, u=Math.max(2,3*scale);
+  const x=roadCx()+r.side*(p.half+8*u), sy=p.sy, poleH=20*u;
+  pr(x-1*u,sy-poleH,2*u,poleH,'#5A6678');                 // pole
+  const bw=10*u, bh=13*u, bx=x-bw/2, by=sy-poleH-bh;
+  pr(bx,by,bw,bh,'#C2C8D1'); pr(bx,by,bw,bh,'#C2C8D1');
+  pr(bx+u,by+u,bw-2*u,bh-2*u,'#E7EAF0');                  // face
+  for(let i=1;i<5;i++) pr(bx+bw*i/5,by+u,1,bh-2*u,'rgba(120,130,145,.5)'); // ribs
+  cohdaDots(bx+1.4*u,by+bh*0.42,0.9*u,'rgba(110,120,135,.9)');
+  for(let i=0;i<4;i++){ const axb=bx+bw*(i+0.6)/4; pr(axb,by-8*u,1.4*u,8*u,'#EDF1F6'); } // antennas
+  if(r.pulse>0 && scale>0.28){                            // broadcast pulse (blocky ring = 4 dashes)
+    const rad=((r.pulse)%1)*10*u, a=0.6*(1-(r.pulse%1));
+    ctx.globalAlpha=a; const c='#15B0EA';
+    pr(x-1,by+bh/2-rad-1,2,2,c); pr(x-1,by+bh/2+rad,2,2,c);
+    pr(x-rad-1,by+bh/2-1,2,2,c); pr(x+rad,by+bh/2-1,2,2,c);
+    ctx.globalAlpha=1;
+  }
+}
+
+/* ---------- HUD / overlays ---------- */
+function drawHUD(){
+  ctx.save(); ctx.textBaseline='top';
+  ctx.font="20px 'Press Start 2P',monospace"; ctx.textAlign='left'; ctx.fillStyle='#EAF0F7';
+  const dstr=Math.floor(dist).toString(); ctx.fillText(dstr,18,16);
+  const dw=ctx.measureText(dstr).width;
+  ctx.font="8px 'Press Start 2P',monospace"; ctx.fillStyle='#8A97A8'; ctx.fillText('M',24+dw,26);
+  ctx.textAlign='right'; ctx.font="8px 'Press Start 2P',monospace"; ctx.fillStyle='#15B0EA'; ctx.fillText('V2X ON',W-18,20);
+  // remaining time (center)
+  ctx.textAlign='center'; ctx.font="14px 'Press Start 2P',monospace";
+  const tsec=Math.ceil(timeLeft); ctx.fillStyle=tsec<=10?'#FF5A5A':'#EAF0F7';
+  ctx.fillText(tsec.toString().padStart(2,'0'),W/2,16);
+  ctx.font="7px 'Press Start 2P',monospace"; ctx.fillStyle='#8A97A8'; ctx.fillText('TIME',W/2,34);
+  if(braking>0){ ctx.textAlign='left'; ctx.fillStyle='rgba(255,51,85,.9)'; ctx.font="9px 'Press Start 2P',monospace"; ctx.fillText('BRAKE',18,46); }
+  ctx.restore();
+}
+function drawFeed(){
+  ctx.save(); ctx.textAlign='right'; ctx.textBaseline='top';
+  const recent=feed.slice(-2);
+  recent.forEach((f,i)=>{ const idx=recent.length-1-i, a=Math.max(0,1-f.t/f.life);
+    ctx.globalAlpha=(i===recent.length-1?.95:.5)*Math.min(1,a*2.2);
+    ctx.font='700 11px Rajdhani,sans-serif'; ctx.fillStyle='#15B0EA'; ctx.fillText(`V2X ▸ ${f.text}`,W-20,38+idx*17); });
+  ctx.restore();
+}
+function drawPops(){
+  for(const p of pops){ overlayLabels.push({kind:'pop',x:p.x,y:p.y,text:p.text,color:p.color,a:Math.max(0,1-p.t/p.life)}); }
+}
+function renderOverlayLabels(){
+  ctx.textAlign='center'; ctx.textBaseline='middle';
+  for(const l of overlayLabels){
+    ctx.globalAlpha=l.a;
+    if(l.kind==='warn'){
+      ctx.font="11px 'Galmuri11','Press Start 2P',monospace";
+      const w=ctx.measureText(l.text).width+22;
+      ctx.fillStyle='rgba(7,11,20,.88)'; roundRect(l.x-w/2,l.y-14,w,28,4); ctx.fill();
+      ctx.strokeStyle=l.color; ctx.lineWidth=2; roundRect(l.x-w/2,l.y-14,w,28,4); ctx.stroke();
+      ctx.fillStyle=l.color; ctx.fillText(l.text,l.x,l.y+1);
+    }else{
+      ctx.font="11px 'Galmuri11','Press Start 2P',monospace"; ctx.fillStyle=l.color; ctx.fillText(l.text,l.x,l.y);
+    }
+  }
+  ctx.globalAlpha=1; overlayLabels=[];
+}
+function drawCountdown(){
+  if(countdown<=0) return;
+  const n=Math.ceil(countdown), frac=countdown-(n-1);
+  ctx.save(); ctx.textAlign='center'; ctx.textBaseline='middle'; ctx.globalAlpha=Math.min(1,frac*1.6);
+  ctx.fillStyle='#15B0EA'; ctx.font="52px 'Press Start 2P',monospace";
+  ctx.fillText(countdown>0.6?n.toString():'GO',W/2,H/2);
+  ctx.globalAlpha=.8; ctx.font="9px 'Galmuri11','Press Start 2P',monospace"; ctx.fillStyle='#8A97A8'; ctx.fillText(t().cdSub,W/2,H/2+56);
+  ctx.restore();
+}
+function drawSpeedUp(){
+  if(speedUp<=0) return;
+  ctx.save(); ctx.textAlign='center'; ctx.textBaseline='middle'; ctx.globalAlpha=Math.min(1,speedUp*2);
+  ctx.fillStyle='#F5A623'; ctx.font="18px 'Press Start 2P',monospace"; ctx.fillText('SPEED UP',W/2,H*0.30); ctx.restore();
+}
+
+/* ---------- loop ---------- */
+function loop(ts){
+  const dt=Math.min(0.05,(ts-lastTs)/1000||0); lastTs=ts;
+  if(state==='play'&&!document.hidden) update(dt);
+  if(state!=='start') draw();
+  requestAnimationFrame(loop);
+}
+
+/* ---------- screens ---------- */
+const startScreen=document.getElementById('startScreen'),
+      leadScreen=document.getElementById('leadScreen'),
+      overScreen=document.getElementById('overScreen');
+const fName=document.getElementById('fName'), fCompany=document.getElementById('fCompany'),
+      fTitle=document.getElementById('fTitle'), fEmail=document.getElementById('fEmail'),
+      fCC=document.getElementById('fCC'), fPhone=document.getElementById('fPhone');
+document.getElementById('startBtn').addEventListener('click',()=>{ COLLECT_LEAD?showLead():startGame(); });
+document.getElementById('retryBtn').addEventListener('click',startGame);
+document.querySelectorAll('#langSw button').forEach(b=>b.addEventListener('click',()=>setLang(b.dataset.lang)));
+document.getElementById('detailToggle').addEventListener('click',function(){
+  const box=document.getElementById('consentDetail'); const hidden=box.classList.toggle('hidden');
+  this.textContent = hidden? t().detailOpen : t().detailClose;
+});
+
+function showLead(){
+  startScreen.classList.add('hidden');
+  overScreen.classList.add('hidden');
+  leadScreen.classList.remove('hidden');
+}
+function startGame(){
+  resize(); resetGame(); dead=false; holdBrake=false; lastTs=performance.now(); state='play';
+  startScreen.classList.add('hidden'); leadScreen.classList.add('hidden'); overScreen.classList.add('hidden');
+  document.getElementById('controls').classList.remove('hidden');
+}
+function gameOver(){
+  state='over'; holdBrake=false;
+  document.getElementById('controls').classList.add('hidden');
+  const score=Math.floor(dist);
+  document.getElementById('finalScore').textContent=score;
+  // prize tier
+  const box=document.getElementById('tierBox');
+  let tier, cls;
+  if(score>=CUT_PRIZE){ tier=t().tierPrize; cls='premium'; }
+  else { tier=t().tierSnack; cls='entry'; }
+  box.className='tier '+cls;
+  document.getElementById('tierBadge').textContent=tier.b;
+  document.getElementById('tierTitle').textContent=tier.t;
+  document.getElementById('tierMsg').textContent=tier.m;
+  // record to sheet once per person (name+phone). Duplicates play but aren't re-recorded.
+  const note=document.getElementById('dupNote');
+  if(COLLECT_LEAD && lead){
+    if(!lead.dup && !sessionRecorded){ submitRecord(score); sessionRecorded=true; if(note) note.textContent=''; }
+    else if(note){ note.textContent=t().dupNote; }
+  } else if(note){ note.textContent=''; }
+  overScreen.classList.remove('hidden');
+}
+
+/* ---------- lead form ---------- */
+function submitLead(){
+  const name=fName.value.trim(), company=fCompany.value.trim(), title=fTitle.value.trim(),
+        email=fEmail.value.trim();
+  let cc=fCC.value.trim(); if(cc && cc[0]!=='+') cc='+'+cc.replace(/[^0-9]/g,'');
+  const num=fPhone.value.trim(), phone=(cc?cc+' ':'')+num;
+  const consent=document.getElementById('fConsent').checked, err=document.getElementById('formErr');
+  if(!name||!company||!title||!email||!num){ err.textContent=t().errAll; return; }
+  if(!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)){ err.textContent=t().errEmail; return; }
+  if(num.replace(/[^0-9]/g,'').length<7){ err.textContent=t().errPhone; return; }
+  if(!consent){ err.textContent=t().errConsent; return; }
+  err.textContent='';
+  lead={name,company,title,email,phone,dup:false};
+  sessionRecorded=false;
+  checkDuplicate(name,phone);   // async server check (name+phone) → sets lead.dup
+  startGame();
+}
+document.getElementById('leadSubmit').addEventListener('click',submitLead);
+document.getElementById('leadForm').addEventListener('submit',e=>{ e.preventDefault(); submitLead(); });
+
+/* JSONP duplicate check (name+phone) — works without CORS setup */
+function checkDuplicate(name,phone){
+  if(!APPS_SCRIPT_URL) return;
+  const cb='v2xcb_'+Date.now();
+  const s=document.createElement('script');
+  window[cb]=function(res){ if(lead) lead.dup=!!(res&&res.dup); try{delete window[cb];}catch(_){}
+    if(s.parentNode) s.parentNode.removeChild(s); };
+  const q='action=check&name='+encodeURIComponent(name)+'&phone='+encodeURIComponent(phone)+'&callback='+cb;
+  s.src=APPS_SCRIPT_URL+(APPS_SCRIPT_URL.indexOf('?')>=0?'&':'?')+q;
+  s.onerror=function(){ try{delete window[cb];}catch(_){} };
+  document.body.appendChild(s);
+}
+
+/* Sends the finished record to Google Sheets when APPS_SCRIPT_URL is set. */
+function submitRecord(score){
+  if(!APPS_SCRIPT_URL || !lead) return;
+  try{
+    const fd=new FormData();
+    fd.append('name',lead.name); fd.append('company',lead.company); fd.append('title',lead.title);
+    fd.append('email',lead.email); fd.append('phone',lead.phone); fd.append('score',score);
+    fetch(APPS_SCRIPT_URL,{method:'POST',body:fd,mode:'no-cors'});
+  }catch(_){}
+}
+
+/* ---------- utils ---------- */
+function roundRect(x,y,w,h,r){ ctx.beginPath(); ctx.moveTo(x+r,y);
+  ctx.arcTo(x+w,y,x+w,y+h,r); ctx.arcTo(x+w,y+h,x,y+h,r); ctx.arcTo(x,y+h,x,y,r); ctx.arcTo(x,y,x+w,y,r); ctx.closePath(); }
+function shade(hex,f){ const n=parseInt(hex.slice(1),16);
+  let r=Math.min(255,((n>>16)&255)*f)|0, g=Math.min(255,((n>>8)&255)*f)|0, b=Math.min(255,(n&255)*f)|0;
+  return `rgb(${r},${g},${b})`; }
+function pr(x,y,w,h,c){ ctx.fillStyle=c; ctx.fillRect(x|0,y|0,Math.max(1,Math.ceil(w)),Math.max(1,Math.ceil(h))); }
+
+/* ---------- boot ---------- */
+setLang('ko'); resize(); requestAnimationFrame(loop);
+</script>
+</body>
+</html>
