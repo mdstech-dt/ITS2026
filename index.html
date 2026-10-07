@@ -253,7 +253,7 @@ function buildStars(){
 
 /* ---------- state ---------- */
 let state='start';
-let dist=0, speed=0, baseSpeed=2.9, maxSpeed=6.2;   // z-units per second (medium)
+let dist=0, speed=0, baseSpeed=1.5, maxSpeed=3.0;   // z-units per second (slow / testable)
 let dashPhase=0;
 let player={lane:1, x:0, tx:0};
 let hazards=[], warns=[], rsus=[], pops=[], feed=[], overlayLabels=[];
@@ -262,8 +262,8 @@ let braking=0, holdBrake=false, shake=0, crashFlash=0, lastTs=0;
 let countdown=0, stage=1, lastStage=1, speedUp=0;
 let dead=false, stun=0, invuln=0;
 
-const HKINDS=['stopped','brake','cross','wrong'];
-const HWEIGHT={stopped:0.33,brake:0.30,cross:0.21,wrong:0.16};
+const HKINDS=['stopped','cross','wrong'];
+const HWEIGHT={stopped:0.44,cross:0.22,wrong:0.34};
 function pickKind(){ let r=Math.random(),a=0; for(const k of HKINDS){a+=HWEIGHT[k]; if(r<=a)return k;} return 'stopped'; }
 
 function resetGame(){
@@ -391,7 +391,7 @@ function scheduleSpawn(){
   }else{
     const lane=(Math.random()*LANES)|0, lead=(kind==='wrong'?1.9:1.6);
     warns.push({lane,t:0,life:lead,kind}); pushFeed(`${t().lane(lane+1)} ${t().haz[kind]}`);
-    const rate = kind==='brake'?0.6 : (kind==='wrong'?1.4:1);
+    const rate = kind==='brake'?1.3 : (kind==='wrong'?1.7:1);  // 급정거=빨리 가까워짐, 역주행=제일 빠름
     setTimeout(()=>{ if(state==='play') hazards.push({kind,lane,z:Z_FAR,rate,hit:false,passed:false,pz:Z_FAR}); }, lead*1000);
   }
 }
@@ -403,7 +403,11 @@ function update(dt){
   timeLeft-=dt;
   if(timeLeft<=0){ timeLeft=0; if(state==='play'){ gameOver(); } return; }
   if(holdBrake) braking=Math.max(braking,0.5);
-  speed=Math.min(maxSpeed, baseSpeed+dist*0.0012);
+  // 구간별 계단식 속도: 0~300 맛보기 → 300~600 빠르게 → 600+ 더 빠르게
+  let target = baseSpeed;
+  if(dist>=600) target = baseSpeed*2.0;
+  else if(dist>=300) target = baseSpeed*1.5;
+  speed += (target-speed)*Math.min(1,dt*2.5);   // 부드럽게 전환
   if(stun>0) stun-=dt; if(invuln>0) invuln-=dt;
   const sp=speed*((braking>0||stun>0)?0.06:1);   // brake / crash-stun = near stop
   if(braking>0) braking-=dt;
@@ -636,18 +640,48 @@ function drawHazard(hz){
     pr(x-2*u,y+2*u,1.6*u,2.4*u,'#F5A623'); pr(x+0.5*u+step*0.4*u,y+2*u,1.6*u,2.4*u,'#F5A623'); // legs
     return;
   }
-  const x=laneX(hz.lane,p.half);
+  const lx=laneX(hz.lane,p.half);
   if(hz.kind==='wrong'){
+    // 역주행 = 빨강 + 정면 헤드라이트 + 좌우로 비틀비틀 지그재그 (비정상 주행)
     const u=Math.max(2,3.4*scale);
-    pr(x-3*u,p.sy-1.5*u,1.5*u,1.5*u,'#FFFDF0'); pr(x+1.5*u,p.sy-1.5*u,1.5*u,1.5*u,'#FFFDF0'); // headlight glow blocks
-    drawCarBody(x,p.sy,scale,'#8A2636','#180a0e','#FFFFFF',true);
-  }else if(hz.kind==='brake'){
-    drawCarBody(x,p.sy,scale,'#4a3f5e','#141018','#FF3355',false);
-    pr(x-5*scale,p.sy-2*scale,10*scale,2.5*scale,'#FF3355');
+    const wob=Math.sin(performance.now()/150 + hz.z*1.4) * (2.4*u);  // 좌우 스웨이(비정상 주행)
+    const x=lx+wob;
+    // 정면 헤드라이트 빛줄기 — 도로 위로 쏘는 광선 (마주 옴을 강조)
+    ctx.globalAlpha=0.14;
+    for(let i=1;i<=5;i++){ const bw=(2.2+i*1.1)*u; pr(x-bw/2, p.sy+i*1.6*u, bw, 1.8*u, '#FFF3B0'); }
+    ctx.globalAlpha=1;
+    pr(x-3.4*u,p.sy-1.8*u,2.2*u,2.2*u,'#FFFBE0'); pr(x+1.2*u,p.sy-1.8*u,2.2*u,2.2*u,'#FFFBE0'); // 밝은 헤드라이트
+    drawCarBody(x,p.sy,scale,'#FF4632','#2a0d08','#FFFBE0',true);
+    const beacon=Math.sin(performance.now()/110)>0;                 // 지붕 경광등 깜빡
+    pr(x-0.9*u,p.sy-16.5*u,1.8*u,1.5*u, beacon?'#FF2a2a':'#5a0f0f');
+    return;
+  }
+  const x=lx;
+  if(hz.kind==='brake'){
+    // 급정거 = 파랑 차 + 타이어 스모크 + 크게 번쩍이는 브레이크 글로우
+    const u=Math.max(2,3.4*scale), t=performance.now()/90;
+    ctx.globalAlpha=0.5;                                             // 타이어 연기
+    for(let i=0;i<3;i++){ const puff=((t*2+i*3)%6)*u; pr(x+(i-1)*3*u-u, p.sy+0.5*u-puff, 2.4*u,2.4*u,'#aeb6c2'); }
+    ctx.globalAlpha=1;
+    drawCarBody(x,p.sy,scale,'#2E74A8','#0c1e2e','#FF3355',false);
+    const bl=Math.sin(performance.now()/90)>0;
+    ctx.globalAlpha=bl?0.5:0.15; pr(x-6*scale,p.sy-3*scale,12*scale,5*scale,'#FF3355'); ctx.globalAlpha=1; // 글로우
+    pr(x-5*scale,p.sy-2*scale,10*scale,2.8*scale, bl?'#FF3355':'#7a1222');
   }else{
-    drawCarBody(x,p.sy,scale,'#6E5A34','#161009','#F5A623',false);
+    // 정지차량 = 회색 차 + 라바콘 + 삼각표지 + 모서리 비상등 깜빡
     const u=Math.max(2,3.4*scale);
-    pr(x-1.2*u,p.sy-9*u,2.4*u,2.4*u,'#F5A623');           // hazard block above
+    drawCarBody(x,p.sy,scale,'#737C8A','#1a1d24','#FF5A5A',false);
+    // 라바콘(옆)
+    pr(x-7.5*u,p.sy-0.6*u,3.4*u,1.0*u,'#E8902A');                   // 바닥
+    pr(x-6.6*u,p.sy-2.2*u,1.6*u,1.6*u,'#FF7A1A'); pr(x-6.2*u,p.sy-1.8*u,0.8*u,0.5*u,'#fff');
+    pr(x-6.2*u,p.sy-3.4*u,0.8*u,1.2*u,'#FF7A1A');
+    // 삼각 안전표지(앞쪽)
+    pr(x-0.6*u,p.sy-11*u,1.2*u,1.2*u,'#F5A623');
+    pr(x-1.2*u,p.sy-10*u,2.4*u,1.2*u,'#F5A623');
+    pr(x-1.8*u,p.sy-9*u,3.6*u,1.2*u,'#F5A623');
+    // 양쪽 모서리 비상등 깜빡
+    const blink=Math.sin(performance.now()/220)>0, c=blink?'#F5A623':'#5a4212';
+    pr(x-6*u,p.sy-5.4*u,1.6*u,1.6*u,c); pr(x+4.4*u,p.sy-5.4*u,1.6*u,1.6*u,c);
   }
 }
 function drawRSU(r){
